@@ -114,7 +114,7 @@ router.get("/stocks/:symbols", (req, res) => {
         "volumes"
       )
       .where({ symbol: req.params.symbols })
-      .limit(1)
+      .distinct("symbol")
       .then((stocks) => {
         if (stocks.length === 0) {
           return res

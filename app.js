@@ -8,7 +8,8 @@ var indexRouter = require('./routes/index');
 var usersRouter = require('./routes/users');
 
 const swaggerUI = require('swagger-ui-express');
-const swaggerDocument = require('./docs/swaggerpet.json')
+const yaml = require('yamljs');
+const swaggerDocument = yaml.load('./docs/swagger.yaml');
 
 var app = express();
 
