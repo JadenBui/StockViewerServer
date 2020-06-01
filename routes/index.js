@@ -1,39 +1,69 @@
 const express = require("express");
 const router = express.Router();
-const bcrypt = require('bcrypt');
-require('dotenv').config();
-const jwt = require('jsonwebtoken');
+const bcrypt = require("bcrypt");
+require("dotenv").config();
+const jwt = require("jsonwebtoken");
 
+const authenticateToken = (req, res, next) => {
+  const authorization = req.headers.authorization;
+  if (!authorization) {
+    return res
+      .status(403)
+      .json({ error: true, message: "Authorization header is missing!" });
+  }
+  const token = authorization.split(" ")[1];
+  if (!token) {
+    res.status(400).json({ error: true, message: "Unauthorized user" });
+  }
+
+  try {
+    const decode = jwt.verify(token, process.env.SECRET_KEY);
+    if (decode.exp > Date.now()) {
+      res.status(400).json({ error: true, message: "The token has expired!" });
+      return;
+    }
+    next();
+  } catch (e) {
+    res.status(400).json({ error: true, message: "The token is invalid!" });
+  }
+};
 
 router.get("/:params", (req, res) => {
   res.json({ error: true, message: "Not Found" });
 });
 
 router.get("/stocks/symbols", (req, res) => {
-  const industry = req.query["industry"];
-  if (industry) {
-    if (/^\d+$/.test(industry)) {
-      res.status(404).json({
+  if (Object.keys(req.query).length !== 0) {
+    if (req.query["industry"]) {
+      const industry = req.query["industry"];
+      if (/^\d+$/.test(industry)) {
+        return res.status(400).json({
+          error: true,
+          message: "Industry parameter can only contain letters",
+        });
+      }
+      req.db
+        .from("stocks")
+        .select("name", "symbol", "industry")
+        .where("industry", "like", `%${industry}%`)
+        .where({ timestamp: "2020-03-24" })
+        .then((stocks) => {
+          if (stocks.length === 0) {
+            return res
+              .status(404)
+              .json({ error: true, message: "Industry sector not found" });
+          }
+          res.status(200).json(stocks);
+        })
+        .catch((err) => {
+          res.json({ error: true, message: "Fail to connect with database" });
+        });
+    } else {
+      return res.status(400).json({
         error: true,
-        message: "Industry parameter can only contain letters",
+        message: "Invalid query parameter: only 'industry' is permitted",
       });
     }
-    req.db
-      .from("stocks")
-      .select("name", "symbol", "industry")
-      .where("industry", "like", `%${req.query["industry"]}%`)
-      .where({ timestamp: "2020-03-24" })
-      .then((stocks) => {
-        if (stocks.length === 0) {
-          res
-            .status(404)
-            .json({ error: true, message: "Industry section not found!" });
-        }
-        res.status(200).json(stocks);
-      })
-      .catch((err) => {
-        res.json({ error: true, message: "Fail to connect with database" });
-      });
   } else {
     req.db
       .from("stocks")
@@ -49,29 +79,86 @@ router.get("/stocks/symbols", (req, res) => {
 });
 
 router.get("/stocks/:symbols", (req, res) => {
-  if (req.params.symbols !== req.params.symbols.toUpperCase()) {
-    res.json({
+  if (
+    !/[A-Z]+/.test(req.params.symbols) ||
+    req.params.symbols !== req.params.symbols.toUpperCase() ||
+    req.params.symbols.length > 5
+  ) {
+    return res.status(400).json({
       error: true,
       message: "Stock symbol incorrect format - must be 1-5 capital letters",
     });
-  }
-  req.db
-    .from("stocks")
-    .select("name", "symbol", "industry")
-    .where({ symbol: req.params.symbols })
-    .limit(1)
-    .then((stocks) => {
-      if (stocks.length === 0) {
-        res.json({ error: true, message: "Stock symbol not found!" });
-      }
-      res.json(stocks);
-    })
-    .catch((err) => {
-      res.json({ error: true, message: "Fail to connect with database" });
+  } else if (Object.keys(req.query).length !== 0) {
+    if (req.query["from"] && req.query["to"]) {
+      return res.status(400).json({
+        error: true,
+        message:
+          "Date parameters only available on authenticated route /stocks/authed",
+      });
+    }
+    return res.status(400).json({
+      error: true,
+      message: `Query is not supported in route /stocks/${req.params.symbols}`,
     });
+  } else {
+    req.db
+      .from("stocks")
+      .select(
+        "timestamp",
+        "name",
+        "symbol",
+        "industry",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volumes"
+      )
+      .where({ symbol: req.params.symbols })
+      .limit(1)
+      .then((stocks) => {
+        if (stocks.length === 0) {
+          return res
+            .status(404)
+            .json({
+              error: true,
+              message: "No entry for symbol in stocks database",
+            });
+        }
+        res.status(200).json(stocks[0]);
+      })
+      .catch((_) => {
+        res
+          .status(404)
+          .json({ error: true, message: "Fail to connect with database" });
+      });
+  }
 });
 
-router.get("/stocks/authed/:symbols", (req, res) => {
+router.get("/stocks/authed/:symbols", authenticateToken, (req, res) => {
+  if(Object.keys(req.query).length === 0){
+    return res.status(404).json({
+      error: true,
+      message:
+        "Not found",
+    });
+  }
+  console.log(Object.keys(req.query).length)
+  if (!req.query["from"] && !req.query["to"]) {
+    return res.status(400).json({
+      error: true,
+      message:
+        "Parameters allowed are from and to, example: /stocks/authed/AAL?from=2020-03-15",
+    });
+  }
+  const from = req.query["from"];
+  const to = req.query["to"];
+  if (Date.parse(from) === NaN || Date.parse(to) === NaN) {
+    return res.status(400).json({
+      error: true,
+      message: "From date cannot be parsed by Date.parse()",
+    });
+  }
   req.db
     .from("stocks")
     .select(
@@ -86,10 +173,14 @@ router.get("/stocks/authed/:symbols", (req, res) => {
       "volumes"
     )
     .where("symbol", "=", req.params.symbols)
-    .whereBetween("timestamp", [req.query["from"], req.query["to"]])
+    .whereBetween("timestamp", [from, to])
     .then((stocks) => {
       if (stocks.length === 0) {
-        res.json({ error: true, message: "Date range is not available!" });
+        return res.status(404).json({
+          error: true,
+          message:
+            "No entries available for query symbol for supplied date range",
+        });
       }
       res.json(stocks);
     })
@@ -100,7 +191,7 @@ router.get("/stocks/authed/:symbols", (req, res) => {
 
 router.post("/user/register", (req, res) => {
   if (!req.body.email || !req.body.password) {
-    res
+    return res
       .status(400)
       .json({ message: "Request body incomplete - email and password needed" });
   }
@@ -110,14 +201,14 @@ router.post("/user/register", (req, res) => {
     .select("email")
     .where({ email: req.body.email })
     .then((users) => {
-      if (users[0]) {
-        res
+      if (users.length !== 0) {
+        return res
           .status(404)
           .json({ error: true, message: "User already exists!" });
       }
       const saltRounds = 10;
       const password = bcrypt.hashSync(req.body.password, saltRounds);
-    
+
       req.db
         .from("users")
         .insert({ email: req.body.email, password: password })
@@ -135,40 +226,42 @@ router.post("/user/register", (req, res) => {
     });
 });
 
-router.post('/user/login',(req,res)=>{
-  if(!req.body.email || !req.body.password){
-    res
+router.post("/user/login", (req, res) => {
+  if (!req.body.email || !req.body.password) {
+    return res
       .status(400)
       .json({ message: "Request body incomplete - email and password needed" });
   }
-  
+
   req.db
     .from("users")
-    .select("email","password")
+    .select("email", "password")
     .where({ email: req.body.email })
-    .then((users) => {
-      if (users[0]) {
-        res
-          .status(404)
-          .json({ error: true, message: "Email not found!" });
+    .then(async (users) => {
+      if (users[0] === undefined) {
+        return res
+          .status(401)
+          .json({ error: true, message: "Incorrect email or password" });
       }
-      
-      const user = users[0];
 
-      if(!bcrypt.compare(password,user.password)){
-        res
-          .status(404)
-          .json({ error: true, message: "Password is incorrect!" });
+      const email = users[0].email;
+      const hash = users[0].password;
+
+      console.log(email);
+
+      const result = await bcrypt.compare(req.body.password, hash);
+      if (!result) {
+        return res
+          .status(401)
+          .json({ error: true, message: "Incorrect email or password" });
       }
 
       const secret = process.env.SECRET_KEY;
-      const expires = 60 * 60 * 24;
-      const exp = Math.floor(Date.now() / 1000) + expires;
-      const token = jwt.sign({email,exp},secret)
-      res
-          .status(200)
-          .json({ token_type: "Bearer", token, expires });
-    })
-})
+      const expires_in = 60 * 60 * 24;
+      const exp = Math.floor(Date.now() / 1000) + expires_in;
+      const token = jwt.sign({ email, exp }, secret);
+      res.status(200).json({ token_type: "Bearer", token, expires_in });
+    });
+});
 
 module.exports = router;
