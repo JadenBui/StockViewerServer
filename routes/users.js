@@ -73,7 +73,7 @@ router.post("/login", (req, res) => {
 
       const secret = process.env.SECRET_KEY;
       const expires_in = 60 * 60 * 24;
-      const exp = Math.floor(Date.now() / 1000) + expires_in;
+      const exp = Date.now() + expires_in * 1000;
       const token = jwt.sign({ email, exp }, secret);
       res.status(200).json({ token_type: "Bearer", token, expires_in });
     });

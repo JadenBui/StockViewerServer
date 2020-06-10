@@ -3,6 +3,29 @@ const router = express.Router();
 require("dotenv").config();
 const jwt = require("jsonwebtoken");
 
+const checkValidRoute = (req, res, next) => {
+  if (Object.keys(req.query).length !== 0) {
+    if (req.query["industry"]) {
+      return res.status(400).json({
+        error: true,
+        message: "Industry query only available on route /stocks/symbols",
+      });
+    } else if (req.query["from"] || req.query["to"]) {
+      return res.status(400).json({
+        error: true,
+        message:
+          "Date parameters only available on authenticated route /stocks/authed",
+      });
+    } else {
+      return res.status(400).json({
+        error: true,
+        message: `Query is not exist on this route ${req.originalUrl}`,
+      });
+    }
+  }
+  next();
+};
+
 const authenticateToken = (req, res, next) => {
   const authorization = req.headers.authorization;
   if (!authorization) {
@@ -17,7 +40,7 @@ const authenticateToken = (req, res, next) => {
 
   try {
     const decode = jwt.verify(token, process.env.SECRET_KEY);
-    if (decode.exp > Date.now()) {
+    if (decode.exp < Date.now()) {
       res.status(400).json({ error: true, message: "The token has expired!" });
       return;
     }
@@ -26,10 +49,6 @@ const authenticateToken = (req, res, next) => {
     res.status(400).json({ error: true, message: "The token is invalid!" });
   }
 };
-
-router.get("/:params", (req, res) => {
-  res.json({ error: true, message: "Not Found" });
-});
 
 router.get("/stocks/symbols", (req, res) => {
   if (Object.keys(req.query).length !== 0) {
@@ -45,7 +64,7 @@ router.get("/stocks/symbols", (req, res) => {
         .from("stocks")
         .select("name", "symbol", "industry")
         .where("industry", "like", `%${industry}%`)
-        .where({ timestamp: "2020-03-24" })
+        .distinct("symbol")
         .then((stocks) => {
           if (stocks.length === 0) {
             return res
@@ -54,7 +73,7 @@ router.get("/stocks/symbols", (req, res) => {
           }
           res.status(200).json(stocks);
         })
-        .catch((err) => {
+        .catch((_) => {
           res.json({ error: true, message: "Fail to connect with database" });
         });
     } else {
@@ -67,17 +86,17 @@ router.get("/stocks/symbols", (req, res) => {
     req.db
       .from("stocks")
       .select("name", "symbol", "industry")
-      .where({ timestamp: "2020-03-24" })
+      .distinct("symbol")
       .then((stocks) => {
         res.status(200).json(stocks);
       })
-      .catch((err) => {
+      .catch((_) => {
         res.json({ error: true, message: "Fail to connect with database" });
       });
   }
 });
 
-router.get("/stocks/:symbols", (req, res) => {
+router.get("/stocks/:symbols",checkValidRoute, (req, res) => {
   if (
     !/[A-Z]+/.test(req.params.symbols) ||
     req.params.symbols !== req.params.symbols.toUpperCase() ||
@@ -102,27 +121,15 @@ router.get("/stocks/:symbols", (req, res) => {
   } else {
     req.db
       .from("stocks")
-      .select(
-        "timestamp",
-        "name",
-        "symbol",
-        "industry",
-        "open",
-        "high",
-        "low",
-        "close",
-        "volumes"
-      )
+      .select("*")
       .where({ symbol: req.params.symbols })
       .distinct("symbol")
       .then((stocks) => {
         if (stocks.length === 0) {
-          return res
-            .status(404)
-            .json({
-              error: true,
-              message: "No entry for symbol in stocks database",
-            });
+          return res.status(404).json({
+            error: true,
+            message: "No entry for symbol in stocks database",
+          });
         }
         res.status(200).json(stocks[0]);
       })
@@ -134,15 +141,14 @@ router.get("/stocks/:symbols", (req, res) => {
   }
 });
 
-router.get("/stocks/authed/:symbols", authenticateToken, (req, res) => {
-  if(Object.keys(req.query).length === 0){
+router.get("/stocks/authed/:symbols",checkValidRoute, authenticateToken, (req, res) => {
+  if (Object.keys(req.query).length === 0) {
     return res.status(404).json({
       error: true,
-      message:
-        "Not found",
+      message: "Not found",
     });
   }
-  console.log(Object.keys(req.query).length)
+
   if (!req.query["from"] && !req.query["to"]) {
     return res.status(400).json({
       error: true,
