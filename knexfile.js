@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 module.exports = {
     client: 'mysql',
     connection: {
@@ -5,6 +7,6 @@ module.exports = {
         port: 3307,
         database: 'webcomputing',
         user: 'root',
-        password: 'CuBe123456'
+        password: process.env.MYSQL_PASSWORD
     }
 }

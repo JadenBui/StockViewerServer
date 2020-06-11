@@ -96,7 +96,7 @@ router.get("/stocks/symbols", (req, res) => {
   }
 });
 
-router.get("/stocks/:symbols",checkValidRoute, (req, res) => {
+router.get("/stocks/:symbols", checkValidRoute, (req, res) => {
   if (
     !/[A-Z]+/.test(req.params.symbols) ||
     req.params.symbols !== req.params.symbols.toUpperCase() ||
@@ -141,57 +141,52 @@ router.get("/stocks/:symbols",checkValidRoute, (req, res) => {
   }
 });
 
-router.get("/stocks/authed/:symbols",checkValidRoute, authenticateToken, (req, res) => {
-  if (Object.keys(req.query).length === 0) {
-    return res.status(404).json({
-      error: true,
-      message: "Not found",
-    });
-  }
+router.get(
+  "/stocks/authed/:symbols",
+  authenticateToken,
+  (req, res) => {
+    const requestedParamter = req.params.symbols;
+    if (Object.keys(req.query).length === 0) {
+      return res.status(404).json({
+        error: true,
+        message: "Not found",
+      });
+    }
 
-  if (!req.query["from"] && !req.query["to"]) {
-    return res.status(400).json({
-      error: true,
-      message:
-        "Parameters allowed are from and to, example: /stocks/authed/AAL?from=2020-03-15",
-    });
+    if (!req.query["from"] && !req.query["to"]) {
+      return res.status(400).json({
+        error: true,
+        message:
+          "Parameters allowed are from and to, example: /stocks/authed/AAL?from=2020-03-15",
+      });
+    }
+    const from = req.query["from"];
+    const to = req.query["to"];
+    if (Date.parse(from) === NaN || Date.parse(to) === NaN) {
+      return res.status(400).json({
+        error: true,
+        message: "From date cannot be parsed by Date.parse()",
+      });
+    }
+    req.db
+      .from("stocks")
+      .select("*")
+      .where("symbol", "=", requestedParamter)
+      .whereBetween("timestamp", [from, to])
+      .then((stocks) => {
+        if (stocks.length === 0) {
+          return res.status(404).json({
+            error: true,
+            message:
+              "No entries available for query symbol for supplied date range",
+          });
+        }
+        res.json(stocks);
+      })
+      .catch((_) => {
+        res.json({ error: true, message: "Fail to connect with database" });
+      });
   }
-  const from = req.query["from"];
-  const to = req.query["to"];
-  if (Date.parse(from) === NaN || Date.parse(to) === NaN) {
-    return res.status(400).json({
-      error: true,
-      message: "From date cannot be parsed by Date.parse()",
-    });
-  }
-  req.db
-    .from("stocks")
-    .select(
-      "timestamp",
-      "name",
-      "symbol",
-      "industry",
-      "open",
-      "high",
-      "low",
-      "close",
-      "volumes"
-    )
-    .where("symbol", "=", req.params.symbols)
-    .whereBetween("timestamp", [from, to])
-    .then((stocks) => {
-      if (stocks.length === 0) {
-        return res.status(404).json({
-          error: true,
-          message:
-            "No entries available for query symbol for supplied date range",
-        });
-      }
-      res.json(stocks);
-    })
-    .catch((err) => {
-      res.json({ error: true, message: "Fail to connect with database" });
-    });
-});
+);
 
 module.exports = router;
