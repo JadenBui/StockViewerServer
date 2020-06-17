@@ -1,7 +1,7 @@
+require("dotenv").config();
 var express = require("express");
 var router = express.Router();
 const bcrypt = require("bcrypt");
-require("dotenv").config();
 const jwt = require("jsonwebtoken");
 
 router.post("/register", (req, res) => {
@@ -32,17 +32,19 @@ router.post("/register", (req, res) => {
           .json({ error: true, message: "User already exists!" });
       }
       const saltRounds = 10;
-      const password = bcrypt.hashSync(requestedPassword, saltRounds);
+      const hashPassword = bcrypt.hashSync(requestedPassword, saltRounds);
 
-      return req.db.from("users").insert({ email: requestedEmail, password: password });
+      return req.db
+        .from("users")
+        .insert({ email: requestedEmail, password: hashPassword });
     })
     .then((_) =>
-          res
-            .status(201)
-            .json({ error: false, message: "Add user successful!" })
-        )
+      res.status(201).json({ error: false, message: "Add user successful!" })
+    )
     .catch((_) => {
-      res.json({ error: true, message: "Fail to connect with database" });
+      res
+        .status(503)
+        .json({ error: true, message: "Fail to connect with database" });
     });
 });
 
@@ -68,8 +70,8 @@ router.post("/login", (req, res) => {
 
       const hash = users[0].password;
 
-      const result = await bcrypt.compare(requestedPassword, hash);
-      if (!result) {
+      const correctCredential = await bcrypt.compare(requestedPassword, hash);
+      if (!correctCredential) {
         return res
           .status(401)
           .json({ error: true, message: "Incorrect email or password" });
