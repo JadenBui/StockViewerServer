@@ -17,7 +17,7 @@ const checkValidRoute = (req, res, next) => {
       return res.status(400).json({
         error: true,
         message:
-          "Date parameters only available on authenticated route /stocks/authed",
+          "Date parameters only available on authenticated route /stocks/authed.",
       });
     } else {
       return res.status(400).json({
