@@ -12,9 +12,9 @@ const cors = require("cors");
 const indexRouter = require("./routes/index");
 const usersRouter = require("./routes/users");
 
-const swaggerUI = require("swagger-ui-express");
-const yaml = require("yamljs");
-const swaggerDocument = yaml.load("./docs/swagger.yaml");
+// const swaggerUI = require("swagger-ui-express");
+// const yaml = require("yamljs");
+// const swaggerDocument = yaml.load("./docs/swagger.yaml");
 
 const app = express();
 
@@ -44,8 +44,11 @@ app.use((req, res, next) => {
 
 app.use("/stocks", indexRouter);
 app.use("/user", usersRouter);
-app.use("/", swaggerUI.serve);
-app.get("/", swaggerUI.setup(swaggerDocument));
+app.get("/", (req, res) => {
+  res.send("Welcome to my web stock server");
+});
+// app.use("/", swaggerUI.serve);
+// app.get("/", swaggerUI.setup(swaggerDocument));
 
 //handle invalid route
 app.use(function (req, res, next) {
